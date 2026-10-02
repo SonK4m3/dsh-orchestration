@@ -32,6 +32,9 @@ break.
    BOM-less UTF-8 `.ps1` as ANSI, and a decoded curly quote is a string delimiter to
    it - that exact accident once broke `setup.ps1` at the first em dash.
    `tests/test_install.ps1` asserts no byte above `0x7F` in itself and in `setup.ps1`.
+   `.gitattributes` pins every text file to LF (`* text=auto eol=lf`) because git
+   here has `core.autocrlf=true`; do not remove it, or a Windows clone will check
+   the shell scripts out with CRLF and every suite will fail on them.
 4. **The effort ladder is `off | low | high | max`.** There is no `medium`; a profile
    that names one fails at runtime. Both test suites assert the ladder.
 5. **Do not sync this kit into `C:\Users\THINKPAD X1\.agents\skills\dsh-orchestration\`.**

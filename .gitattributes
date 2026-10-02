@@ -1,0 +1,11 @@
+# Every text file stays LF in the working tree on every platform.
+#
+# The POSIX installer and both shell suites are line-ending sensitive, the
+# installers copy files byte-for-byte, and tests/test_install.ps1 asserts that
+# setup.ps1 has no byte above 0x7F (a CR would not fail that, but a CRLF
+# checkout of setup.sh would break bash and the LF assertions). Git on the
+# authoring machine has core.autocrlf=true, so without this file a Windows
+# clone would check the shell scripts out with CRLF.
+#
+# Windows PowerShell 5.1 and 7 both read LF-only .ps1 files correctly.
+* text=auto eol=lf

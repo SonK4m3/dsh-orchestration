@@ -81,6 +81,41 @@ omitted entirely. Do not let an audit edge turn into a write.
 
 Agent count is not fixed. Spawn one per independent, verifiable outcome — no more.
 
+## Astra pipeline — two-tier staged pipeline
+
+An L3 specialization from the Codex Astra/Luna orchestrator
+(https://github.com/donvito/codex-astra-luna-orchestrator/): the staged graph
+with a **model tier pinned to every node**.
+
+```
+Root (capable model): invariants + ownership
+   ├─→ Explorer:   affected flows        (read-only, economical model)
+   ├─→ Researcher: unresolved contract   (read-only, economical model)
+   └─→ Worker:     disjoint write slice  (economical model)
+         ↓
+   Tester: regression evidence           (economical model)
+         ↓
+   Reviewer: independent assessment      (capable model)
+         ↓
+   Root integrates → Final boundary verification
+```
+
+Rules that make the tier split real:
+
+- **Judgment nodes get the capable model; execution nodes get the economical
+  one.** Root and reviewer reason about correctness and shape; explorer,
+  researcher, worker, and tester run bounded work.
+- **The reviewer is a different, stronger model than the implementer**, and it
+  runs after the tester, so it assesses tested output, not raw output.
+- **Concurrency is per stage.** Start explorer, researcher, and worker together;
+  tester and reviewer are stages that never run simultaneously with what they
+  verify.
+- **Roles are not fixed spawns.** Spawn only the nodes that produce an
+  independently verifiable outcome; with fewer, this collapses to L1 or L2.
+- DSH has no named-role registry; **the work packet carries the model pin**.
+  Record configured, requested, and runtime-confirmed values separately — never
+  claim a switch you did not make.
+
 ---
 
 ## Debug — competing hypotheses, one fix owner

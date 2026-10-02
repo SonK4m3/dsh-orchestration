@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "name": "plus-2-subagents",
+  "displayName": "Plus (max 2 subagents)",
+  "description": "Same tier assignment as Plus, but every fan-out is capped at two concurrent subagents.",
+  "root": { "model": "deepseek-flash", "reasoning_effort": "max" },
+  "execution": { "model": "deepseek-flash", "reasoning_effort": "low" },
+  "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "low" },
+  "roles": {
+    "explorer": { "access": "read-only" },
+    "researcher": { "access": "read-only" },
+    "worker": { "access": "write" },
+    "tester": { "access": "write-tests" }
+  },
+  "host": {
+    "maxActiveSubagents": 2,
+    "maxDepth": 1,
+    "requiresSubagentModelSelection": true
+  },
+  "notes": [
+    "Set the Host subagent setting maxActiveSubagents to 2 to match; the kit cannot write Host settings for you.",
+    "Execution runs at low effort: DSH's ladder is off | low | high | max, so the upstream 'medium' execution tier is expressed as low.",
+    "Choose this for a tight budget on well-specified work."
+  ]
+}

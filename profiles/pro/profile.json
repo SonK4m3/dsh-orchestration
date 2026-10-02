@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "name": "pro",
+  "displayName": "Pro (default)",
+  "description": "Strong model orchestrates and reviews; economical model executes. Balanced default for nontrivial work.",
+  "root": { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
+  "execution": { "model": "deepseek-flash", "reasoning_effort": "high" },
+  "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "low" },
+  "roles": {
+    "explorer": { "access": "read-only" },
+    "researcher": { "access": "read-only" },
+    "worker": { "access": "write" },
+    "tester": { "access": "write-tests" }
+  },
+  "host": {
+    "maxActiveSubagents": 8,
+    "maxDepth": 1,
+    "requiresSubagentModelSelection": true
+  },
+  "notes": [
+    "Reviewer runs the strong model at low effort and sits after the tester: it judges the tested change, not raw output.",
+    "Choose this when a wrong result costs more than the tokens."
+  ]
+}

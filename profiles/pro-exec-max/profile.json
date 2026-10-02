@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "name": "pro-exec-max",
+  "displayName": "Pro, execution at maximum effort",
+  "description": "Strong model orchestrates and reviews at DSH's default effort; execution agents run at maximum effort.",
+  "root": { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
+  "execution": { "model": "deepseek-flash", "reasoning_effort": "max" },
+  "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
+  "roles": {
+    "explorer": { "access": "read-only" },
+    "researcher": { "access": "read-only" },
+    "worker": { "access": "write" },
+    "tester": { "access": "write-tests" }
+  },
+  "host": {
+    "maxActiveSubagents": 8,
+    "maxDepth": 1,
+    "requiresSubagentModelSelection": true
+  },
+  "notes": [
+    "Spends effort where the work is actually done, and gives the review the same effort as planning.",
+    "The upstream 'medium planning' tier is expressed as DSH's high, because DSH's ladder is off | low | high | max."
+  ]
+}

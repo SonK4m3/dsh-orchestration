@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "name": "plus",
+  "displayName": "Plus",
+  "description": "Economical model orchestrates at maximum effort; the strong model still performs the independent review.",
+  "root": { "model": "deepseek-flash", "reasoning_effort": "max" },
+  "execution": { "model": "deepseek-flash", "reasoning_effort": "low" },
+  "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "low" },
+  "roles": {
+    "explorer": { "access": "read-only" },
+    "researcher": { "access": "read-only" },
+    "worker": { "access": "write" },
+    "tester": { "access": "write-tests" }
+  },
+  "host": {
+    "maxActiveSubagents": 8,
+    "maxDepth": 1,
+    "requiresSubagentModelSelection": true
+  },
+  "notes": [
+    "Maximum planning effort spent on the cheap model, with the review gate kept expensive on purpose.",
+    "Execution runs at low effort: DSH's ladder is off | low | high | max, so the upstream 'medium' execution tier is expressed as low.",
+    "Choose this for well-specified work where the plan is more likely to be wrong than the typing."
+  ]
+}

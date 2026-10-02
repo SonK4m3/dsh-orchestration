@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "name": "pro-max",
+  "displayName": "Pro Max",
+  "description": "Strong model orchestrates and reviews at maximum effort; execution agents also run at maximum effort.",
+  "root": { "model": "deepseek-v4-pro", "reasoning_effort": "max" },
+  "execution": { "model": "deepseek-flash", "reasoning_effort": "max" },
+  "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "max" },
+  "roles": {
+    "explorer": { "access": "read-only" },
+    "researcher": { "access": "read-only" },
+    "worker": { "access": "write" },
+    "tester": { "access": "write-tests" }
+  },
+  "host": {
+    "maxActiveSubagents": 8,
+    "maxDepth": 1,
+    "requiresSubagentModelSelection": true
+  },
+  "notes": [
+    "Every node spends maximum reasoning effort. Token and time cost are the highest of the set.",
+    "Choose this only for hard, high-risk work where a wrong answer is the expensive outcome."
+  ]
+}

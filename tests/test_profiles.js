@@ -18,7 +18,10 @@ const ROOT = path.join(__dirname, "..");
 const PROFILES_DIR = path.join(ROOT, "profiles");
 const SCRIPT_PATH = path.join(ROOT, "scripts", "orchestrate.js");
 
-const MODELS = ["deepseek-flash", "deepseek-v4-pro"];
+// The kit ships one model on every tier. Listing it here is the enforcement: a
+// profile that reaches for a second model fails this suite until the policy and this
+// line are changed together.
+const MODELS = ["deepseek-flash"];
 const EFFORTS = ["off", "low", "high", "max"];
 const ACCESS = ["read-only", "write", "write-tests"];
 const ALLOWED_SCHEMA_KEYWORDS = new Set([
@@ -169,8 +172,14 @@ for (const dir of profileDirs) {
     dir + ": reasoning stays enabled for root, execution, and reviewer"
   );
 
-  // The review gate is only independent if it is not the model that did the work.
-  ok(data.reviewer.model !== data.execution.model, dir + ": reviewer model differs from the execution model");
+  // One model everywhere: a profile buys thinking effort, not capability. Review
+  // independence is therefore structural - the reviewer is never shown the worker's
+  // summary - and the gate is never allowed to be the cheapest node in the graph.
+  ok(
+    data.root.model === data.execution.model && data.reviewer.model === data.execution.model,
+    dir + ": every tier pins the same model (" + data.execution.model + ")"
+  );
+  ok(data.reviewer.reasoning_effort !== "low", dir + ": the review gate does not run at low effort");
 }
 
 // ------------------------------------------- embedded table drift + execution
@@ -316,6 +325,10 @@ function runScript(scriptArgs, options) {
   }
   ok(stubs.calls.find((c) => c.label === "worker").model === profiles.pro.execution.model, "worker runs the execution model");
   ok(stubs.calls.find((c) => c.label === "reviewer").model === profiles.pro.reviewer.model, "reviewer runs the reviewer model");
+  ok(
+    new Set(stubs.calls.map((call) => call.model)).size === 1,
+    "every spawned node is pinned to one model (" + Array.from(new Set(stubs.calls.map((call) => call.model))).join(", ") + ")"
+  );
   for (const call of stubs.calls) {
     ok(call.prompt.includes("make the widget cache invalidate correctly"), call.label + " prompt carries the objective");
     ok(call.prompt.includes("R1") && call.prompt.includes("R2"), call.label + " prompt carries the numbered requirements");

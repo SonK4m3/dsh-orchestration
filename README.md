@@ -10,8 +10,9 @@ It is four things that fit together:
 1. **A skill** (`SKILL.md` + `references/`) that tells an agent how to decide whether
    to split work at all, and what shape to use when it does.
 2. **A runnable pipeline** (`scripts/orchestrate.js`) - a DSH `workflow` script body
-   with five nodes and a two-tier model policy: cheap models execute, strong models
-   plan and review.
+   with five nodes, all on one model: `deepseek-flash`, the flash model of the
+   official route (DeepSeek V4.1 Flash). Profiles differ by requested effort per
+   tier and by fan-out width, not by model.
 3. **Installers** (`setup.ps1`, `setup.sh`) that copy both into a project, or into
    `$DSH_HOME`, and manage one marked region in `AGENTS.md`.
 4. **Guides** (`guides/`) covering installation, the six profiles, and the mapping
@@ -22,7 +23,7 @@ It is four things that fit together:
 
 ```
 SKILL.md                     always-loaded skill body: 7 steps, L0-L3
-references/topologies.md     topology diagrams, incl. the two-tier staged pipeline
+references/topologies.md     topology diagrams, incl. the staged Astra pipeline
 references/delegation.md     work-packet fields, ownership, verification, failures
 assets/work-packet.md        copy-and-fill work-packet template
 assets/agents-block.md       body of the AGENTS.md managed region
@@ -33,7 +34,7 @@ profiles/<name>/profile.json six profiles: model + effort per stage, host cap
 setup.ps1                    Windows installer (PowerShell 5.1+)
 setup.sh                     macOS / Linux installer (POSIX bash)
 
-tests/test_profiles.js       272 checks: profile + pipeline consistency
+tests/test_profiles.js       279 checks: profile + pipeline consistency
 tests/test_install.ps1       83 checks: PowerShell installer
 tests/test_install.sh        108 checks: POSIX installer
 
@@ -83,24 +84,28 @@ review independent. Root then integrates and reports `unresolved[]` rather than
 claiming success.
 
 Model pins come from the profile and are applied through
-`agent(prompt, { model })`. Reasoning effort is written into each prompt as a
-request; it becomes a real per-call parameter only when the Host setting
-**subagent model selection** is enabled. The installers end by printing that
-setting and the `maxActiveSubagents` value the chosen profile expects.
+`agent(prompt, { model })`. Every shipped profile pins `deepseek-flash`; a profile
+that needs another model changes one table and the matching `profile.json`, and the
+pipeline follows the tier rather than a hardcoded name. Reasoning effort is written
+into each prompt as a request; it becomes a real per-call parameter only when the
+Host setting **subagent model selection** is enabled. The installers end by printing
+that setting and the `maxActiveSubagents` value the chosen profile expects.
 
 ## Profiles
 
 | Profile | root | execution | reviewer | cap |
 | --- | --- | --- | --- | --- |
-| `pro` (default) | `deepseek-v4-pro` / high | `deepseek-flash` / high | `deepseek-v4-pro` / low | 8 |
-| `plus` | `deepseek-flash` / max | `deepseek-flash` / low | `deepseek-v4-pro` / low | 8 |
-| `pro-2-subagents` | `deepseek-v4-pro` / high | `deepseek-flash` / high | `deepseek-v4-pro` / low | 2 |
-| `plus-2-subagents` | `deepseek-flash` / max | `deepseek-flash` / low | `deepseek-v4-pro` / low | 2 |
-| `pro-max` | `deepseek-v4-pro` / max | `deepseek-flash` / max | `deepseek-v4-pro` / max | 8 |
-| `pro-exec-max` | `deepseek-v4-pro` / high | `deepseek-flash` / max | `deepseek-v4-pro` / high | 8 |
+| `pro` (default) | `deepseek-flash` / high | `deepseek-flash` / high | `deepseek-flash` / high | 8 |
+| `plus` | `deepseek-flash` / max | `deepseek-flash` / low | `deepseek-flash` / high | 8 |
+| `pro-2-subagents` | `deepseek-flash` / high | `deepseek-flash` / high | `deepseek-flash` / high | 2 |
+| `plus-2-subagents` | `deepseek-flash` / max | `deepseek-flash` / low | `deepseek-flash` / high | 2 |
+| `pro-max` | `deepseek-flash` / max | `deepseek-flash` / max | `deepseek-flash` / max | 8 |
+| `pro-exec-max` | `deepseek-flash` / high | `deepseek-flash` / max | `deepseek-flash` / high | 8 |
 
-The rule behind all six: **judgement gets the strong model, execution gets the cheap
-one, and the reviewer is a different model than the implementer.** See
+The rule behind all six: **one model everywhere; the profiles buy thinking time, not
+capability.** Because the review gate can no longer be a stronger model than the
+implementer, its independence rests on isolation - it never sees the worker's summary
+- and no profile drops it below high effort. See
 [guides/profiles.md](guides/profiles.md).
 
 ## Verification
@@ -109,14 +114,17 @@ All three suites are green, and none of them is a smoke test:
 
 | Suite | Result | Notes |
 | --- | --- | --- |
-| `node tests/test_profiles.js` | 272/272 | Drift-checks the pipeline's embedded profile table against `profiles/`, and asserts the effort ladder, node order, prompt contents, fan-out width versus cap, and failure degradation. |
+| `node tests/test_profiles.js` | 279/279 | Drift-checks the pipeline's embedded profile table against `profiles/`, and asserts the effort ladder, one model on every tier, the review gate never at low effort, node order, prompt contents, fan-out width versus cap, and failure degradation. |
 | `powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_install.ps1` | 83/83 | Installs into `.test-install/`, asserts exact file lists, byte-identical copies, idempotency, profile switching, component subsets, user scope, numeric selection, and twelve refusals. |
 | `bash tests/test_install.sh` | 108/108 | Same coverage for the POSIX installer, plus a pass with `python3` and `node` removed from `PATH` so its `sed`-based profile reader is exercised. Verified on Linux bash 5.3.9 (WSL Ubuntu); macOS is unexercised. |
 
-An end-to-end run of the pipeline itself was executed through the live `workflow`
-tool: five agents, four phases, all five result schemas accepted, execution nodes on
-`deepseek-flash` and the reviewer on `deepseek-v4-pro`, exactly as the profile
-specifies.
+An end-to-end run of the pipeline itself was executed once through the live `workflow`
+tool, back when the profiles split models: five agents, four phases, all five result
+schemas accepted, execution nodes on `deepseek-flash` and the reviewer on
+`deepseek-v4-pro`. That live run has **not** been repeated since the move to one model
+on every node; what covers the current profiles is the stubbed execution in
+`tests/test_profiles.js` (phase order, model pins, prompt contents, fan-out, failure
+degradation).
 
 ## Requirements
 

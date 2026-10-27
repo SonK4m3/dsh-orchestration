@@ -235,7 +235,7 @@ function Resolve-Target([string]$requested) {
 try {
   Write-Host ''
   Write-Host '  DSH orchestration kit - installer' -ForegroundColor White
-  Write-Host '  Astra/Luna two-tier topology for DeepSeek Harness'
+  Write-Host '  Astra/Luna staged topology for DeepSeek Harness'
 
   $profiles = Get-Profiles
   if ($profiles.Count -eq 0) { throw 'no profiles found under profiles/' }

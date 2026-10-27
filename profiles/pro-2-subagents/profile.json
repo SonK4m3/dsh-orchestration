@@ -3,9 +3,9 @@
   "name": "pro-2-subagents",
   "displayName": "Pro (max 2 subagents)",
   "description": "Same tier assignment as Pro, but every fan-out is capped at two concurrent subagents.",
-  "root": { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
+  "root": { "model": "deepseek-flash", "reasoning_effort": "high" },
   "execution": { "model": "deepseek-flash", "reasoning_effort": "high" },
-  "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "low" },
+  "reviewer": { "model": "deepseek-flash", "reasoning_effort": "high" },
   "roles": {
     "explorer": { "access": "read-only" },
     "researcher": { "access": "read-only" },
@@ -19,6 +19,7 @@
   },
   "notes": [
     "Set the Host subagent setting maxActiveSubagents to 2 to match; the kit cannot write Host settings for you.",
+    "Explorer and researcher still run together: they are the only two nodes that run in parallel, so the cap of 2 is not reached twice over.",
     "Choose this on constrained accounts or to keep review and integration honest while agents are few."
   ]
 }

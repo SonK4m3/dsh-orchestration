@@ -81,34 +81,42 @@ omitted entirely. Do not let an audit edge turn into a write.
 
 Agent count is not fixed. Spawn one per independent, verifiable outcome — no more.
 
-## Astra pipeline — two-tier staged pipeline
+## Astra pipeline — staged pipeline with a tier on every node
 
 An L3 specialization from the Codex Astra/Luna orchestrator
 (https://github.com/donvito/codex-astra-luna-orchestrator/): the staged graph
-with a **model tier pinned to every node**.
+with a **tier pinned to every node**. A tier is a model plus a requested effort.
+In this kit's shipped profiles every tier names the same model, so the axis that
+actually differs between stages is effort, not capability.
 
 ```
-Root (capable model): invariants + ownership
-   ├─→ Explorer:   affected flows        (read-only, economical model)
-   ├─→ Researcher: unresolved contract   (read-only, economical model)
-   └─→ Worker:     disjoint write slice  (economical model)
+Root (you): invariants + ownership
+   ├─→ Explorer:   affected flows        (read-only, execution effort)
+   ├─→ Researcher: unresolved contract   (read-only, execution effort)
+   └─→ Worker:     disjoint write slice  (execution effort, sole writer)
          ↓
-   Tester: regression evidence           (economical model)
+   Tester: regression evidence           (execution effort, test artifacts only)
          ↓
-   Reviewer: independent assessment      (capable model)
+   Reviewer: independent assessment      (reviewer effort, read-only)
          ↓
    Root integrates → Final boundary verification
 ```
 
-Rules that make the tier split real:
+Rules that make the tier design real:
 
-- **Judgment nodes get the capable model; execution nodes get the economical
-  one.** Root and reviewer reason about correctness and shape; explorer,
-  researcher, worker, and tester run bounded work.
-- **The reviewer is a different, stronger model than the implementer**, and it
-  runs after the tester, so it assesses tested output, not raw output.
-- **Concurrency is per stage.** Start explorer, researcher, and worker together;
-  tester and reviewer are stages that never run simultaneously with what they
+- **Effort follows judgement before typing.** Root and reviewer reason about
+  correctness and shape; explorer, researcher, worker, and tester run bounded work.
+  Spend effort at the judgement stages first.
+- **The reviewer runs after the tester**, so it assesses tested output rather than
+  raw output.
+- **With one model, independence is structural.** The review is independent because
+  of what it is given and what it is not - requirements and artifacts, never the
+  implementer's summary - not because it thinks with a stronger model. Say that
+  plainly instead of implying a capability difference that does not exist.
+- **Never let the review gate be the cheapest node.** If the implementer runs at
+  `high`, the reviewer does not run at `low`; a weaker check reads as a passed check.
+- **Concurrency is per stage.** Explorer and researcher start together; worker,
+  tester, and reviewer are stages that never run simultaneously with what they
   verify.
 - **Roles are not fixed spawns.** Spawn only the nodes that produce an
   independently verifiable outcome; with fewer, this collapses to L1 or L2.

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "name": "pro",
   "displayName": "Pro (default)",
-  "description": "Strong model orchestrates and reviews; economical model executes. Balanced default for nontrivial work.",
-  "root": { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
+  "description": "One model for every node, high effort throughout, wide fan-out. Balanced default for nontrivial work.",
+  "root": { "model": "deepseek-flash", "reasoning_effort": "high" },
   "execution": { "model": "deepseek-flash", "reasoning_effort": "high" },
-  "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "low" },
+  "reviewer": { "model": "deepseek-flash", "reasoning_effort": "high" },
   "roles": {
     "explorer": { "access": "read-only" },
     "researcher": { "access": "read-only" },
@@ -18,7 +18,8 @@
     "requiresSubagentModelSelection": true
   },
   "notes": [
-    "Reviewer runs the strong model at low effort and sits after the tester: it judges the tested change, not raw output.",
+    "Every tier runs deepseek-flash (DeepSeek V4.1 Flash on the official route) at high effort.",
+    "With one model the review gate cannot be stronger than the implementer, so its independence rests on isolation: the reviewer never sees the worker's summary. Its effort is never below the execution tier's.",
     "Choose this when a wrong result costs more than the tokens."
   ]
 }

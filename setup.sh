@@ -337,7 +337,7 @@ install_agents_block() {
 [ -d "$KIT_ROOT/profiles" ] || die "profiles directory not found at $KIT_ROOT/profiles"
 
 printf '\n  DSH orchestration kit - installer\n'
-printf '  Astra/Luna two-tier topology for DeepSeek Harness\n'
+printf '  Astra/Luna staged topology for DeepSeek Harness\n'
 
 if [ "$SHOW_LIST" = 1 ]; then
   list_profiles

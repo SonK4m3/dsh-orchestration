@@ -17,7 +17,7 @@ and packages are `@deepseek-ai/<name>`. The install ships as one packed
 | --- | --- | --- |
 | `.codex/config.toml` profile block | `profiles/<name>/profile.json` plus the two Host settings the installer prints | DSH has **no project config file**. A whole-source search for `dsh.toml`, `.dshrc`, `config.toml`, `dsh.yaml`, `.dsh.json`, `agents/*.toml` finds one unrelated README hit. The only project-scoped paths DSH reads are `<project>/.dsh/skills` and `AGENTS.md`. Configuration is Cordis YAML patch layers under `$DSH_HOME` plus a profile `package.json`. |
 | `.codex/agents/*.toml` with `name`, `description`, `model`, `model_reasoning_effort`, `sandbox_mode`, `developer_instructions` | a **work packet**: role, instructions, file ownership, output contract, and a model pin passed to `agent(prompt, { model })` | There is **no on-disk agent registry**. Agent presets are Cordis YAML plugin rows (`dsh-agent-preset/README.md:28-46`). The per-call input schema of the subagent tool is only `description` and `prompt`, plus `provider` / `model` / `reasoning_effort` / `run_in_background` when model selection is enabled (`dsh-tool-subagent/lib/index.js:401-430`). There is no per-call system prompt, tool list, or label field. |
-| Per-role `model` + `model_reasoning_effort` | `agent(prompt, { model })` in the `workflow` script; effort written into the prompt as a request | Models: `deepseek-v4-pro`, `deepseek-flash` (`dsh-llm-deepseek/lib/index.js:42-54`). Ladder: `off`, `low`, `high`, `max`, default `high` (`:313-318`). Effort is an opaque adapter-owned string (`dsh-llm/lib/index.js:930`) and reaches the wire as `output_config.effort`; an unsupported explicit value fails with `UNSUPPORTED_REASONING_EFFORT` (`dsh-llm-deepseek/lib/index.js:1700`, `dsh-llm/lib/index.js:2182`). |
+| Per-role `model` + `model_reasoning_effort` | `agent(prompt, { model })` in the `workflow` script; effort written into the prompt as a request | Models: `deepseek-flash` (pinned by every shipped profile) and `deepseek-v4-pro` (`dsh-llm-deepseek/lib/index.js:42-54`). Ladder: `off`, `low`, `high`, `max`, default `high` (`:313-318`). Effort is an opaque adapter-owned string (`dsh-llm/lib/index.js:930`) and reaches the wire as `output_config.effort`; an unsupported explicit value fails with `UNSUPPORTED_REASONING_EFFORT` (`dsh-llm-deepseek/lib/index.js:1700`, `dsh-llm/lib/index.js:2182`). |
 | `sandbox_mode = "read-only"` | a prompt contract, not isolation | DSH does not sandbox an individual child. A read-only role is enforced by instructions plus a choice of work that needs no writes. |
 | `max_concurrent = 4` | Host setting `maxActiveSubagents` (default **8**), mirroring `host.maxActiveSubagents` in the profile, plus the fan-out width the script chooses | It counts live continuable children only; one-shot and external-provider runs are exempt. At capacity, creation or cold resume fails with `ACTIVATION_LIMIT_REACHED` (`dsh-subagent/README.md:51-55`, code `:759`, `:786`, `:970`). `maxDepth` (default 1) is separate. |
 | The upstream caller loop that sequences roles in one long session | the `workflow` tool: `pipeline` (no barrier between stages), `parallel` (barrier), `phase()`, `log()`, and JSON-Schema-validated results | This is DSH-native and has no upstream equivalent. `scripts/orchestrate.js` is a workflow script body. |
@@ -27,8 +27,8 @@ and packages are `@deepseek-ai/<name>`. The install ships as one packed
 
 ## Profile name mapping
 
-Upstream ships six profiles; this kit ships six profiles with the same idea (root
-model, execution model, review model, concurrency) but names them after the axis that
+Upstream ships six profiles; this kit ships six profiles with the same idea (a tier
+per stage, a review stage, a concurrency cap) but names them after the axis that
 differs, so that a name never implies an effort level it does not set.
 
 | Upstream | This kit |
@@ -40,16 +40,20 @@ differs, so that a name never implies an effort level it does not set.
 | `GPT6-SolMax-LunaMax` | `pro-max` |
 | `GPT6-SolMedium-LunaMax` | `pro-exec-max` |
 
-`pro` and `plus` keep their upstream names and meaning. The four others are split by
-the two axes the upstream names bundle: concurrency cap, and maximum-versus-high
-effort.
+`pro` and `plus` keep their upstream names. The four others are split by the axes the
+upstream names bundle: concurrency cap, and maximum-versus-high effort. Every shipped
+profile pins `deepseek-flash` on all three tiers, so the surviving axes are effort per
+tier and fan-out width; the upstream model split - a stronger root, a cheaper
+executor - is deliberately gone.
 
 ## Verified DSH facts behind the kit
 
 - **Models**: `DEFAULT_MODELS` = `deepseek-flash` (DeepSeek-V41-Flash, text+image) and
   `deepseek-v4-pro` (DeepSeek-V4-Pro), replaceable through the adapter's `models`
   field. Default route is `provider: deepseek-official`, `model: deepseek-flash`
-  (`dsh-base/cordis.patch.yml:82-86`).
+  (`dsh-base/cordis.patch.yml:82-86`). Third-party routes list the same flash model
+  under the versioned id `deepseek-v4.1-flash` (OpenCode Zen, OpenRouter); an
+  unrecognised id is passed through to the wire and fails at the call, not at load.
 - **Reasoning effort**: `off | low | high | max`; default `high`; there is no
   `medium`. The base composition leaves `modelSelectionSettings` unset, so per-call
   `provider` / `model` / `reasoning_effort` are only exposed when the Host setting

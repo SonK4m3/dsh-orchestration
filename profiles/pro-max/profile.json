@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "name": "pro-max",
   "displayName": "Pro Max",
-  "description": "Strong model orchestrates and reviews at maximum effort; execution agents also run at maximum effort.",
-  "root": { "model": "deepseek-v4-pro", "reasoning_effort": "max" },
+  "description": "One model for every node at maximum effort, every stage.",
+  "root": { "model": "deepseek-flash", "reasoning_effort": "max" },
   "execution": { "model": "deepseek-flash", "reasoning_effort": "max" },
-  "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "max" },
+  "reviewer": { "model": "deepseek-flash", "reasoning_effort": "max" },
   "roles": {
     "explorer": { "access": "read-only" },
     "researcher": { "access": "read-only" },

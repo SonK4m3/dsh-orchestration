@@ -16,6 +16,12 @@
 // What this script does NOT do: it never integrates or declares success. Root
 // owns integration and the final boundary check; this script returns evidence.
 //
+// Every shipped profile pins the same model on every tier - deepseek-flash, the
+// flash model of the official DeepSeek route (DeepSeek V4.1 Flash). What varies
+// between profiles is the requested effort per tier and the fan-out width, not
+// the model. A profile that needs a different model edits one table and the
+// matching profile.json; the pipeline reads the tier, not a model name.
+//
 // Model tiers are pinned through the workflow tool's per-node model override.
 // Reasoning effort is NOT pinnable there: it is requested in each prompt and
 // reported back as "requested", never claimed as runtime-confirmed. The only
@@ -25,39 +31,39 @@
 // --- profiles:begin --- (mirrors profiles/*/profile.json; drift-checked by tests/test_profiles.js)
 const PROFILES = {
   "pro": {
-    "root": { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
+    "root": { "model": "deepseek-flash", "reasoning_effort": "high" },
     "execution": { "model": "deepseek-flash", "reasoning_effort": "high" },
-    "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "low" },
+    "reviewer": { "model": "deepseek-flash", "reasoning_effort": "high" },
     "host": { "maxActiveSubagents": 8, "maxDepth": 1 }
   },
   "plus": {
     "root": { "model": "deepseek-flash", "reasoning_effort": "max" },
     "execution": { "model": "deepseek-flash", "reasoning_effort": "low" },
-    "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "low" },
+    "reviewer": { "model": "deepseek-flash", "reasoning_effort": "high" },
     "host": { "maxActiveSubagents": 8, "maxDepth": 1 }
   },
   "pro-2-subagents": {
-    "root": { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
+    "root": { "model": "deepseek-flash", "reasoning_effort": "high" },
     "execution": { "model": "deepseek-flash", "reasoning_effort": "high" },
-    "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "low" },
+    "reviewer": { "model": "deepseek-flash", "reasoning_effort": "high" },
     "host": { "maxActiveSubagents": 2, "maxDepth": 1 }
   },
   "plus-2-subagents": {
     "root": { "model": "deepseek-flash", "reasoning_effort": "max" },
     "execution": { "model": "deepseek-flash", "reasoning_effort": "low" },
-    "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "low" },
+    "reviewer": { "model": "deepseek-flash", "reasoning_effort": "high" },
     "host": { "maxActiveSubagents": 2, "maxDepth": 1 }
   },
   "pro-max": {
-    "root": { "model": "deepseek-v4-pro", "reasoning_effort": "max" },
+    "root": { "model": "deepseek-flash", "reasoning_effort": "max" },
     "execution": { "model": "deepseek-flash", "reasoning_effort": "max" },
-    "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "max" },
+    "reviewer": { "model": "deepseek-flash", "reasoning_effort": "max" },
     "host": { "maxActiveSubagents": 8, "maxDepth": 1 }
   },
   "pro-exec-max": {
-    "root": { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
+    "root": { "model": "deepseek-flash", "reasoning_effort": "high" },
     "execution": { "model": "deepseek-flash", "reasoning_effort": "max" },
-    "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
+    "reviewer": { "model": "deepseek-flash", "reasoning_effort": "high" },
     "host": { "maxActiveSubagents": 8, "maxDepth": 1 }
   }
 };
@@ -274,7 +280,8 @@ phase("Review");
 // The reviewer receives requirements and artifacts — not the worker's own summary.
 // It must form an independent conclusion before seeing any implementer confidence.
 const reviewer = await agent(
-  "ROLE: reviewer (independent, read-only, strong model)\n" +
+  "ROLE: reviewer (independent, read-only, separate context)\n" +
+    "\nYou run the same model as the implementer, so model strength is not what makes this check independent: your fresh context, and the fact that you were not shown the implementer's own account of its work, are." +
     "OBJECTIVE: " + objective +
     "\nREQUIREMENTS:\n" + requirementList +
     "\nARTIFACTS: changed paths " + JSON.stringify(worker.changedPaths) +

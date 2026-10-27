@@ -16,12 +16,15 @@ researcher / worker / tester, `reviewer` is the independent check at the end.
 
 | Profile | root | execution | reviewer | cap | Reach for it when |
 | --- | --- | --- | --- | --- | --- |
-| `pro` | `deepseek-v4-pro` / high | `deepseek-flash` / high | `deepseek-v4-pro` / low | 8 | Default. Plan and review with the strong model, execute cheaply. |
-| `plus` | `deepseek-flash` / max | `deepseek-flash` / low | `deepseek-v4-pro` / low | 8 | The plan is already clear and the work is mechanical; widest fan-out per token. |
-| `pro-2-subagents` | `deepseek-v4-pro` / high | `deepseek-flash` / high | `deepseek-v4-pro` / low | 2 | As `pro`, but the machine or the budget only tolerates two live children. |
-| `plus-2-subagents` | `deepseek-flash` / max | `deepseek-flash` / low | `deepseek-v4-pro` / low | 2 | As `plus`, capped at two live children. |
-| `pro-max` | `deepseek-v4-pro` / max | `deepseek-flash` / max | `deepseek-v4-pro` / max | 8 | Hard problems end to end: every stage gets maximum effort. |
-| `pro-exec-max` | `deepseek-v4-pro` / high | `deepseek-flash` / max | `deepseek-v4-pro` / high | 8 | Cheap model, expensive thinking: long or subtle execution with a strong review. |
+| `pro` | `deepseek-flash` / high | `deepseek-flash` / high | `deepseek-flash` / high | 8 | Default. Every stage at the same effort; nothing is starved. |
+| `plus` | `deepseek-flash` / max | `deepseek-flash` / low | `deepseek-flash` / high | 8 | The plan is the risky part and the work is mechanical: think hardest at the root, type cheaply. |
+| `pro-2-subagents` | `deepseek-flash` / high | `deepseek-flash` / high | `deepseek-flash` / high | 2 | As `pro`, but the machine or the budget only tolerates two live children. |
+| `plus-2-subagents` | `deepseek-flash` / max | `deepseek-flash` / low | `deepseek-flash` / high | 2 | As `plus`, capped at two live children. |
+| `pro-max` | `deepseek-flash` / max | `deepseek-flash` / max | `deepseek-flash` / max | 8 | Hard problems end to end: every stage gets maximum effort. |
+| `pro-exec-max` | `deepseek-flash` / high | `deepseek-flash` / max | `deepseek-flash` / high | 8 | The work is long or subtle: execution maxed, planning and review at the default. |
+
+All six pin the same model on all three tiers. The two axes that still separate them
+are **requested effort per tier** and **fan-out width**.
 
 Numeric selection is 1-based in the order above, so `-Profile 3` is
 `pro-2-subagents` in both installers.
@@ -33,10 +36,10 @@ Numeric selection is 1-based in the order above, so `-Profile 3` is
   "schemaVersion": 1,
   "name": "pro",
   "displayName": "Pro",
-  "description": "Strong root and reviewer, cheap high-effort execution.",
-  "root":      { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
-  "execution": { "model": "deepseek-flash",  "reasoning_effort": "high" },
-  "reviewer":  { "model": "deepseek-v4-pro", "reasoning_effort": "low"  },
+  "description": "One model, high effort on every stage.",
+  "root":      { "model": "deepseek-flash", "reasoning_effort": "high" },
+  "execution": { "model": "deepseek-flash", "reasoning_effort": "high" },
+  "reviewer":  { "model": "deepseek-flash", "reasoning_effort": "high" },
   "roles": { "explorer": ..., "researcher": ..., "worker": ..., "tester": ... },
   "host": { "maxActiveSubagents": 8, "maxDepth": 1, "requiresSubagentModelSelection": true },
   "notes": [ ... ]
@@ -50,7 +53,7 @@ cosmetic: `setup.sh` falls back to `sed` on exactly those lines when neither
 write an empty pin when a field cannot be read.
 
 `roles` and `notes` are documentation. They exist so a reader does not have to infer
-the intent of a profile from three model ids.
+the intent of a profile from three tier settings.
 
 ## The effort ladder
 
@@ -62,7 +65,8 @@ profile that used it was rejected at runtime; it is the reason
 `tests/test_profiles.js` asserts that no tier uses a value outside the ladder.
 
 Reasoning effort is a request, not a setting. `orchestrate.js` writes the effort
-into each node's prompt (`Effort: <value>. ...`), and the value only becomes a real
+into each node's prompt (`REQUESTED REASONING EFFORT: <value> (a request, not an
+enforced setting)`), and the value only becomes a real
 per-call parameter when the Host setting **subagent model selection** is enabled and
 the call passes `reasoning_effort`. The installers print both Host settings that
 matter; the profiles stay correct either way, because a pin that cannot be applied
@@ -70,10 +74,22 @@ is still honest as a prompt-level request.
 
 ## Model ids
 
-| id | name |
-| --- | --- |
-| `deepseek-v4-pro` | DeepSeek-V4-Pro - stronger agentic coding, knowledge, and difficult reasoning |
-| `deepseek-flash` | DeepSeek-V41-Flash - cheap, fast, text and image input |
+| id | name | use |
+| --- | --- | --- |
+| `deepseek-flash` | DeepSeek-V41-Flash | The flash model of the official `deepseek-official` route, text and image input. Every shipped profile pins it. |
+| `deepseek-v4-pro` | DeepSeek-V4-Pro | The stronger model of the same route. The kit no longer pins it, but a profile may. |
+| `deepseek-v4.1-flash` | DeepSeek V4.1 Flash | The explicit versioned id third-party routes use for the same model (OpenCode Zen, OpenRouter). Pin this instead of `deepseek-flash` if that is the id your provider lists. |
+
+`deepseek-flash` and `deepseek-v4.1-flash` are the same model under two route-specific
+names. Which string is correct depends on the provider, and a wrong one fails the call
+rather than degrading: DSH passes an unknown model id through to the wire, and the
+node returns no result, which `orchestrate.js` reports as a failed stage instead of a
+pass.
+
+Changing the model for the whole kit is one field in each of the six
+`profiles/*/profile.json` files plus the matching lines inside the `PROFILES` slice of
+`scripts/orchestrate.js` - the drift check in `tests/test_profiles.js` fails if you
+touch only one side.
 
 ## Adding a profile
 

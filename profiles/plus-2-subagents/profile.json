@@ -5,7 +5,7 @@
   "description": "Same tier assignment as Plus, but every fan-out is capped at two concurrent subagents.",
   "root": { "model": "deepseek-flash", "reasoning_effort": "max" },
   "execution": { "model": "deepseek-flash", "reasoning_effort": "low" },
-  "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "low" },
+  "reviewer": { "model": "deepseek-flash", "reasoning_effort": "high" },
   "roles": {
     "explorer": { "access": "read-only" },
     "researcher": { "access": "read-only" },

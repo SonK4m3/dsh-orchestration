@@ -145,7 +145,7 @@ assert_eq '--list prints one row per profile' 6 "$(grep -cE '^  [1-9]  ' "$OUT")
 for name in pro plus pro-2-subagents plus-2-subagents pro-max pro-exec-max; do
   assert_contains "lists $name" "$OUT" "$name"
 done
-assert_contains 'shows the strong root pin' "$OUT" 'deepseek-v4-pro/high'
+assert_contains 'shows the root model pin' "$OUT" 'root deepseek-flash/high'
 assert_contains 'shows the max-effort execution pin' "$OUT" 'exec deepseek-flash/max'
 
 # ------------------------------------------------------------------------------
@@ -294,7 +294,7 @@ if command -v python3 >/dev/null 2>&1 || command -v node >/dev/null 2>&1; then
   run_setup_path "$shim" --list
   assert_rc '--list exits 0 without a JSON parser' 0
   assert_contains 'fallback lists every profile' "$OUT" 'pro-exec-max'
-  assert_contains 'fallback reads the model pin' "$OUT" 'deepseek-v4-pro/high'
+  assert_contains 'fallback reads the model pin' "$OUT" 'root deepseek-flash/high'
   assert_contains 'fallback reads the execution effort' "$OUT" 'deepseek-flash/max'
   a="$(fresh_target parser-default)"
   b="$(fresh_target parser-fallback)"

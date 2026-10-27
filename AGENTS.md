@@ -67,7 +67,7 @@ break.
 
 | Command | Checks | Covers |
 | --- | --- | --- |
-| `node tests/test_profiles.js` | 272 | Profile schema, embedded-table drift, node order, model pins, prompt contents, fan-out width vs cap, failure degradation. |
+| `node tests/test_profiles.js` | 279 | Profile schema, embedded-table drift, one model on every tier, node order, model pins, prompt contents, fan-out width vs cap, failure degradation. |
 | `powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_install.ps1` | 83 | The PowerShell installer: file lists, byte-identical copies, idempotency, profile switch, component subsets, user scope, numerics, refusals. |
 | `bash tests/test_install.sh` | 108 | The POSIX installer, mirroring the above, plus a pass with `python3` and `node` removed from `PATH`. Verified on Linux bash 5.3.9; macOS is unexercised. |
 

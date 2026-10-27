@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "name": "pro-exec-max",
   "displayName": "Pro, execution at maximum effort",
-  "description": "Strong model orchestrates and reviews at DSH's default effort; execution agents run at maximum effort.",
-  "root": { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
+  "description": "One model for every node; execution agents run at maximum effort, root and reviewer at DSH's default high.",
+  "root": { "model": "deepseek-flash", "reasoning_effort": "high" },
   "execution": { "model": "deepseek-flash", "reasoning_effort": "max" },
-  "reviewer": { "model": "deepseek-v4-pro", "reasoning_effort": "high" },
+  "reviewer": { "model": "deepseek-flash", "reasoning_effort": "high" },
   "roles": {
     "explorer": { "access": "read-only" },
     "researcher": { "access": "read-only" },

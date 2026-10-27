@@ -46,8 +46,8 @@ Use this table to pick a level, then read
 | L3 | Staged agents | Several independent slices, or material risk needing independent review |
 
 There is no fixed agent count at L3. Never spawn more agents than you have
-independent, verifiable outcomes. The two-tier Astra pipeline is an L3
-specialization that pins a model tier to every node; see topologies.md.
+independent, verifiable outcomes. The Astra pipeline is an L3 specialization that
+pins a model and a requested effort to every node; see topologies.md.
 
 ## Step 2 — Split by outcome, not by role
 
@@ -135,7 +135,7 @@ parity or savings that were not measured.
 
 ## References
 
-- [topologies.md](references/topologies.md) — L0–L3 diagrams, the two-tier Astra
+- [topologies.md](references/topologies.md) — L0–L3 diagrams, the Astra
   pipeline, and the debug, deadline, and escalation shapes
 - [delegation.md](references/delegation.md) — ownership, context budget, review
 - [work-packet.md](assets/work-packet.md) — fill-in template

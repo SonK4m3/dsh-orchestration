@@ -6,10 +6,40 @@ but its parts are not the same parts: Codex has per-project config files, per-ro
 agent TOMLs and OS sandbox modes, and DSH has none of those. This guide records the
 mapping, with the DSH source location behind each claim.
 
-Throughout, `<PFX>` is
-`C:\Users\THINKPAD X1\AppData\Local\Programs\DeepSeek Harness\resources\app.asar\dsh\node_modules`
-and packages are `@deepseek-ai/<name>`. The install ships as one packed
-`app.asar`, readable only by running the Electron binary in Node mode.
+Throughout, package paths such as `dsh-llm-deepseek/lib/index.js:42-54` are paths
+**inside** the archive, not on disk: the whole runtime ships as one packed
+`resources\app.asar`. Only two places are real directories - `resources\app.asar.unpacked`
+(which holds native modules) and the per-user state under `~/.dsh`. A "checkout" path of
+the form `…\app.asar\dsh\` is not a directory and cannot be listed.
+
+## Reading the packaged sources
+
+`app.asar` is a plain file, so a byte grep works: `rg -a '<literal>' "<...>\app.asar"`.
+That finds offsets but no readable context, and a windowed pattern such as
+`.{200}<literal>` silently returns nothing whenever a newline falls inside the window.
+Use the committed helper instead:
+
+```
+node tools/asar-slice.js "<...>\resources\app.asar" customSkillDirs 150 400 2
+```
+
+Two traps that cost real time before that tool existed:
+
+- `rg -o '[A-Za-z]*Skill[A-Za-z]+'` reports the **matched substring**, not the
+  identifier: `customSkillDirs` comes back as `SkillDirs`, and grepping that spelling
+  finds nothing.
+- The archive's JSON index and its file contents both match a needle, so hit 1 is
+  often the index entry rather than the code.
+
+For what a session actually ran on, read the session record instead of the config:
+
+```
+node tools/session-probe.js <session-id-prefix> [--json]
+```
+
+It decompresses `~/.dsh/sessions/<bucket>/<session>/session.v4.jsonl.zstd` (one zstd
+frame per appended batch) and prints the role named in the work packet, the models and
+providers actually recorded, and the packet size.
 
 ## Concept mapping
 

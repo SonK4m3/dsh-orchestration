@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  posix:
+    name: posix (node + bash)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The suites compare file modes and line endings; a plain checkout keeps
+          # the committed mode bits, which is what we want to verify.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: gitattributes kept the scripts LF
+        run: |
+          ! file setup.sh tests/test_install.sh tests/wsl-run.sh | grep -q CRLF
+      - name: profiles and pipeline
+        run: node tests/test_profiles.js
+      - name: POSIX installer
+        run: bash tests/test_install.sh
+      - name: documented check counts
+        run: node tests/check-doc-counts.js
+
+  windows:
+    name: windows (node + powershell)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: every suite runnable on this platform
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/run-all.ps1

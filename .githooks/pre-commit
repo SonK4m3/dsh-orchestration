@@ -1,0 +1,21 @@
+#!/bin/sh
+# Runs the kit's suites before a commit. Enable once per clone:
+#
+#   git config core.hooksPath .githooks
+#
+# Skipping in an emergency is possible with `git commit --no-verify`, which is
+# exactly why CI runs the same suites: the local hook is a convenience, CI is the
+# guardrail.
+set -e
+
+if command -v powershell >/dev/null 2>&1; then
+  exec powershell -NoProfile -ExecutionPolicy Bypass -File tests/run-all.ps1
+fi
+
+if command -v pwsh >/dev/null 2>&1; then
+  exec pwsh -NoProfile -File tests/run-all.ps1
+fi
+
+node tests/test_profiles.js
+bash tests/test_install.sh
+node tests/check-doc-counts.js

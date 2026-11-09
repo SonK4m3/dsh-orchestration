@@ -238,13 +238,14 @@ function makeStubs(options) {
   const calls = [];
   const parallelArities = [];
 
+  const FILLER = "which is why the cached prefix survives a mid-turn restart and the restart path stays cold. ";
   const results = {
     explorer: { summary: "explorer summary", affectedPaths: ["src/a.js"], findings: ["entry point is src/a.js"], unknowns: [] },
     researcher: { summary: "researcher summary", facts: [{ claim: "config key is X", source: "docs/x.md" }], unknowns: [] },
     worker: {
       changedPaths: ["src/a.js"],
-      summary: "WORKER-CONFIDENCE-MARKER changed src/a.js",
-      verification: ["node --check src/a.js"],
+      summary: "WORKER-CONFIDENCE-MARKER changed src/a.js. " + FILLER.repeat(12),
+      verification: ["node --check src/a.js", "node tests/test_profiles.js"],
       unresolved: []
     },
     tester: { passed: true, evidence: ["ran the suite: 12 passed"], failures: [], uncovered: ["no load test was attempted"] },
@@ -257,7 +258,10 @@ function makeStubs(options) {
     if (opts.schema) checkSchemaKeywords(opts.schema, "schema(" + opts.label + ")", []);
     calls.push({ label: opts.label, model: opts.model, provider: opts.provider, phase: opts.phase, prompt, schema: opts.schema });
     if ((settings.fail || []).includes(opts.label)) return null;
-    return opts.schema ? results[opts.label] : "text result";
+    // Slice workers are labelled "worker:<id>"; one canned worker result stands in
+    // for all of them, so a fan-out of N slices needs no N fixtures.
+    const canned = results[opts.label] || (opts.label.indexOf("worker:") === 0 ? results.worker : undefined);
+    return opts.schema ? canned : "text result";
   };
 
   const parallel = async (thunks) => {
@@ -332,8 +336,33 @@ function runScript(scriptArgs, options) {
   for (const call of stubs.calls) {
     ok(call.prompt.includes("make the widget cache invalidate correctly"), call.label + " prompt carries the objective");
     ok(call.prompt.includes("R1") && call.prompt.includes("R2"), call.label + " prompt carries the numbered requirements");
+    // Guards against a concatenation that glues a clause onto OBJECTIVE, e.g.
+    // "...are." + "OBJECTIVE: ..." with no newline between the two parts.
+    ok(call.prompt.includes("\nOBJECTIVE:"), call.label + " prompt keeps OBJECTIVE on its own line");
   }
   ok(stubs.calls.find((c) => c.label === "worker").prompt.includes("src/cache.js"), "the worker prompt states its write ownership");
+
+  // 3b. Default return is a summary envelope; evidence: "full" still returns the reports.
+  ok(result.evidence === "summary", "the default run reports evidence=summary");
+  ok(
+    result.implementation.summary.length <= 240 && result.implementation.summary.endsWith("..."),
+    "the worker summary is clipped to 240 chars and marked (" + result.implementation.summary.length + ")"
+  );
+  ok(
+    JSON.stringify(result.implementation.changedPaths) === JSON.stringify(["src/a.js"]),
+    "the brief envelope still carries changedPaths, the field root integrates on"
+  );
+  ok(result.implementation.checkCount === 2, "the brief envelope counts the worker's checks instead of quoting them");
+  const fullRun = await runScript({ objective: "make the widget cache invalidate correctly", evidence: "full" });
+  ok(
+    fullRun.result.evidence === "full" && fullRun.result.implementation.summary.includes("cached prefix survives"),
+    "evidence=full keeps the verbatim worker summary"
+  );
+  ok(
+    JSON.stringify(result.implementation).length * 2 < JSON.stringify(fullRun.result.implementation).length,
+    "the brief envelope is under half the full payload (" +
+      JSON.stringify(result.implementation).length + " vs " + JSON.stringify(fullRun.result.implementation).length + ")"
+  );
   const reviewerPrompt = stubs.calls.find((c) => c.label === "reviewer").prompt;
   ok(!reviewerPrompt.includes("WORKER-CONFIDENCE-MARKER"), "the reviewer never sees the worker's own summary (independence)");
   ok(reviewerPrompt.includes("ran the suite: 12 passed"), "the reviewer does see the tester's evidence");
@@ -391,6 +420,126 @@ function runScript(scriptArgs, options) {
 
   const noReviewer = await runScript({ objective: "reviewer failure path" }, { fail: ["reviewer"] });
   ok(noReviewer.result.integration.verdict === "unreviewed", "a missing review is not reported as accepted");
+
+  // 5b. Slices: the partition root supplied, and the guard that keeps it honest.
+  const twoSlices = [
+    { id: "cache", objective: "add TTL to the cache", writePaths: ["src/cache.js"], acceptance: ["node --test cache"] },
+    { id: "wiring", objective: "wire the new option", writePaths: ["src/wiring.js"], acceptance: ["node --test wiring"] }
+  ];
+  const split = await runScript({ objective: "split the cache work", slices: twoSlices });
+  const sliceWorkers = split.stubs.calls.filter((call) => call.label.indexOf("worker:") === 0);
+  ok(split.result.ok === true, "a valid slice list runs end to end");
+  ok(sliceWorkers.length === 2, "one worker per slice (got " + sliceWorkers.length + ")");
+  ok(
+    sliceWorkers.some((call) => call.prompt.includes("src/cache.js") && call.prompt.includes("node --test cache")),
+    "a slice prompt carries its own write paths and acceptance checks"
+  );
+  ok(
+    sliceWorkers.every((call) => call.prompt.includes("PARENT OBJECTIVE")),
+    "a slice prompt still carries the parent objective"
+  );
+  ok(
+    split.result.plan.slices.length === 2 && split.result.plan.merges.length === 0,
+    "the plan reports both slices and no merge"
+  );
+  ok(
+    JSON.stringify(split.result.implementation.changedPaths) === JSON.stringify(["src/a.js"]),
+    "changedPaths is deduplicated across slices"
+  );
+
+  const overlap = await runScript({
+    objective: "two writers, one path",
+    slices: [
+      { id: "a", objective: "first", writePaths: ["src/shared.js", "src/a.js"], acceptance: ["a passes"] },
+      { id: "b", objective: "second", writePaths: ["src/shared.js"], acceptance: ["b passes"] }
+    ]
+  });
+  ok(
+    overlap.stubs.calls.filter((call) => call.label.indexOf("worker:") === 0).length === 1,
+    "slices that share a write path collapse into one writer"
+  );
+  ok(
+    overlap.result.plan.merges.length === 1 && overlap.result.plan.merges[0].absorbed === "b",
+    "the merge is reported, not silent"
+  );
+
+  const bridge = await runScript({
+    objective: "the third slice bridges two owners",
+    slices: [
+      { id: "a", objective: "a", writePaths: ["src/one.js"], acceptance: ["a passes"] },
+      { id: "b", objective: "b", writePaths: ["src/two.js"], acceptance: ["b passes"] },
+      { id: "c", objective: "c", writePaths: ["src/one.js", "src/two.js"], acceptance: ["c passes"] }
+    ]
+  });
+  ok(
+    bridge.stubs.calls.filter((call) => call.label.indexOf("worker:") === 0).length === 1,
+    "a slice that bridges two owners merges all three into one writer"
+  );
+
+  const unchecked = await runScript({
+    objective: "uncheckable",
+    slices: [{ id: "x", objective: "do the thing", writePaths: ["src/x.js"] }]
+  });
+  ok(
+    unchecked.result.ok === false && unchecked.result.stage === "validate",
+    "a slice without acceptance checks is refused"
+  );
+  ok(unchecked.stubs.calls.length === 0, "a refused slice list spawns nothing");
+  ok(
+    JSON.stringify(unchecked.result.problems).includes("acceptance"),
+    "the refusal names the missing field"
+  );
+
+  const unowned = await runScript({
+    objective: "unowned",
+    slices: [{ id: "y", objective: "do the thing", acceptance: ["test passes"] }]
+  });
+  ok(unowned.result.ok === false, "a slice with no write paths is refused");
+
+  const badShape = await runScript({ objective: "slices of the wrong shape", slices: { id: "x" } });
+  ok(
+    badShape.result.ok === false && badShape.stubs.calls.length === 0,
+    "a non-array slices argument is refused instead of silently falling back to one writer"
+  );
+
+  const duplicate = await runScript({
+    objective: "duplicate ids",
+    slices: [
+      { id: "same", objective: "one", writePaths: ["src/one.js"], acceptance: ["a passes"] },
+      { id: "same", objective: "two", writePaths: ["src/two.js"], acceptance: ["b passes"] }
+    ]
+  });
+  ok(
+    duplicate.result.ok === false,
+    "duplicate slice ids are refused (they would make a failure unattributable)"
+  );
+
+  const planned = await runScript({ objective: "plan only", dryRun: true, slices: twoSlices });
+  ok(planned.stubs.calls.length === 0, "dryRun with slices spawns nothing");
+  ok(
+    planned.result.slices.length === 2 && planned.result.workerCount === 2,
+    "dryRun reports the slice plan and the worker count"
+  );
+
+  const partial = await runScript({ objective: "one slice fails", slices: twoSlices }, { fail: ["worker:wiring"] });
+  ok(partial.result.ok === true, "a surviving slice still runs the rest of the graph");
+  ok(
+    partial.result.unresolved.some((item) => item.includes("slice wiring produced no result")),
+    "the failed slice is named in unresolved"
+  );
+
+  const manySlices = [1, 2, 3, 4, 5].map((n) => ({
+    id: "s" + n,
+    objective: "part " + n,
+    writePaths: ["src/s" + n + ".js"],
+    acceptance: ["check " + n]
+  }));
+  const wideFan = await runScript({ objective: "many slices", slices: manySlices });
+  ok(Math.max.apply(null, wideFan.stubs.parallelArities) <= 3, "five slices run in waves no wider than the fan-out");
+  ok(
+    wideFan.stubs.calls.filter((call) => call.label.indexOf("worker:") === 0).length === 5,
+    "every slice is spawned"
+  );
 
   // 6. Every declared profile is runnable end to end.
   for (const dir of profileDirs) {

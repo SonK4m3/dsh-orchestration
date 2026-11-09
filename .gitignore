@@ -2,3 +2,5 @@
 Thumbs.db
 *.log
 .test-install/
+tests/.last-run.json
+tests/.logs/

@@ -71,6 +71,17 @@ Split on **independently verifiable outcomes**, not on file count and not on
 generic role names. "One agent for the frontend, one for the backend" is only valid
 if those two produce separately checkable results.
 
+Split **vertically, not by layer.** Each slice runs end to end through every layer it
+needs, so it can be demonstrated and checked alone: "the cache reads its TTL from
+config, and one test covers it", not "all the config changes" then "all the cache
+changes". A layer split leaves nothing checkable until every layer lands, which is the
+most common way a fan-out turns into rework.
+
+Name the **handoff artifact** for every slice: the one output the next step consumes.
+Then test the boundary with one question — could a different specialist finish the next
+step using only that output, without knowing how it was produced? If not, the slice is
+cut in the wrong place; merge it into its consumer.
+
 Before spawning parallel writers, freeze the interface they share. Write down
 signatures, data shapes, and file paths. Parallel implementation against an
 unfrozen interface guarantees rework.
@@ -89,9 +100,9 @@ Every delegation gets a packet. Fill in
 [work packet](assets/work-packet.md) and read
 [delegation](references/delegation.md) for the contract details.
 
-The packet must state: objective, requirement IDs, exclusive write paths or
-read-only scope, interface and dependencies, minimal context, acceptance checks,
-and return format.
+The packet must state: objective, requirement IDs, handoff artifact, exclusive write
+paths or read-only scope, interface and dependencies, minimal context, acceptance
+checks, and return format.
 
 **Pass minimal context, not the whole conversation.** A subagent that inherits
 everything spends most of its budget rediscovering what root already knows. Give it
@@ -127,6 +138,9 @@ Reassess when an agent fails, a dependency appears, a requirement changes, a tes
 fails, or the deadline is at risk.
 
 - Stop obsolete work rather than letting it finish out of politeness.
+- Retry the failed unit alone, not the plan. Rerunning accepted work pays twice for one
+  failure; give the unit a bounded budget — the pipeline defaults to one attempt and
+  caps at three — then change the contract instead of the count.
 - Reuse an agent that already holds relevant context.
 - If the same approach fails twice with no new evidence, change the hypothesis, the
   contract, the model, or the ownership — not the retry count.

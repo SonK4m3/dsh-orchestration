@@ -237,6 +237,7 @@ function makeStubs(options) {
   const settings = options || {};
   const calls = [];
   const parallelArities = [];
+  const failCounts = {};
 
   const FILLER = "which is why the cached prefix survives a mid-turn restart and the restart path stays cold. ";
   const results = {
@@ -258,6 +259,11 @@ function makeStubs(options) {
     if (opts.schema) checkSchemaKeywords(opts.schema, "schema(" + opts.label + ")", []);
     calls.push({ label: opts.label, model: opts.model, provider: opts.provider, phase: opts.phase, prompt, schema: opts.schema });
     if ((settings.fail || []).includes(opts.label)) return null;
+    // failOnce: { label: n } fails the first n attempts of a label, so a retry has
+    // something to succeed at on its second call.
+    const seen = failCounts;
+    seen[opts.label] = (seen[opts.label] || 0) + 1;
+    if (seen[opts.label] <= ((settings.failOnce || {})[opts.label] || 0)) return null;
     // Slice workers are labelled "worker:<id>"; one canned worker result stands in
     // for all of them, so a fan-out of N slices needs no N fixtures.
     const canned = results[opts.label] || (opts.label.indexOf("worker:") === 0 ? results.worker : undefined);
@@ -423,8 +429,20 @@ function runScript(scriptArgs, options) {
 
   // 5b. Slices: the partition root supplied, and the guard that keeps it honest.
   const twoSlices = [
-    { id: "cache", objective: "add TTL to the cache", writePaths: ["src/cache.js"], acceptance: ["node --test cache"] },
-    { id: "wiring", objective: "wire the new option", writePaths: ["src/wiring.js"], acceptance: ["node --test wiring"] }
+    {
+      id: "cache",
+      objective: "add TTL to the cache",
+      artifact: "src/cache.js exporting set(key, value, ttl)",
+      writePaths: ["src/cache.js"],
+      acceptance: ["node --test cache"]
+    },
+    {
+      id: "wiring",
+      objective: "wire the new option",
+      artifact: "src/config.js exporting cacheTtl",
+      writePaths: ["src/wiring.js"],
+      acceptance: ["node --test wiring"]
+    }
   ];
   const split = await runScript({ objective: "split the cache work", slices: twoSlices });
   const sliceWorkers = split.stubs.calls.filter((call) => call.label.indexOf("worker:") === 0);
@@ -446,12 +464,98 @@ function runScript(scriptArgs, options) {
     JSON.stringify(split.result.implementation.changedPaths) === JSON.stringify(["src/a.js"]),
     "changedPaths is deduplicated across slices"
   );
+  ok(
+    sliceWorkers.some(
+      (call) => call.prompt.includes("HANDOFF ARTIFACT") && call.prompt.includes("src/cache.js exporting set(key, value, ttl)")
+    ),
+    "a slice prompt names the artifact the next step consumes"
+  );
+  ok(
+    split.result.plan.slices.every((slice) => typeof slice.artifact === "string" && slice.artifact.length > 0),
+    "the plan reports each slice's artifact"
+  );
+
+  const withReqs = await runScript({
+    objective: "slice requirements",
+    slices: [
+      {
+        id: "r",
+        objective: "do r",
+        artifact: "out/r.txt",
+        requirementIds: ["R1", "R2"],
+        writePaths: ["src/r.js"],
+        acceptance: ["r passes"]
+      }
+    ]
+  });
+  ok(
+    withReqs.stubs.calls.find((call) => call.label === "worker:r").prompt.includes("SLICE REQUIREMENTS: R1, R2"),
+    "a slice prompt carries its own requirement ids"
+  );
+
+  const noArtifact = await runScript({
+    objective: "no handoff",
+    slices: [{ id: "n", objective: "do n", writePaths: ["src/n.js"], acceptance: ["n passes"] }]
+  });
+  ok(
+    noArtifact.result.ok === false && JSON.stringify(noArtifact.result.problems).includes("artifact"),
+    "a slice with no handoff artifact is refused"
+  );
+  ok(noArtifact.stubs.calls.length === 0, "the artifact refusal spawns nothing");
+
+  const badRetry = await runScript({ objective: "retry too far", maxAttempts: 4 });
+  ok(
+    badRetry.result.ok === false && badRetry.result.stage === "validate" && JSON.stringify(badRetry.result.problems).includes("maxAttempts"),
+    "maxAttempts outside 1..3 is refused"
+  );
+  ok(badRetry.stubs.calls.length === 0, "a refused retry budget spawns nothing");
+
+  const retried = await runScript(
+    { objective: "retry one slice", slices: twoSlices, maxAttempts: 2 },
+    { failOnce: { "worker:wiring": 1 } }
+  );
+  const wiringCalls = retried.stubs.calls.filter((call) => call.label === "worker:wiring");
+  ok(retried.result.ok === true, "a unit that fails once still completes the run");
+  ok(wiringCalls.length === 2, "only the failed unit is retried (got " + wiringCalls.length + " calls)");
+  ok(
+    retried.stubs.calls.filter((call) => call.label === "worker:cache").length === 1,
+    "a unit that already returned is not spawned again"
+  );
+  ok(wiringCalls[1].prompt.includes("RETRY 2 of 2"), "the retry prompt names the attempt");
+  ok(
+    retried.result.runtime.attempts.some((entry) => entry.id === "wiring" && entry.attempts === 2),
+    "the envelope reports attempts per unit"
+  );
+  ok(retried.result.runtime.spawnCount === 3, "the envelope counts every spawn, including retries (got " + retried.result.runtime.spawnCount + ")");
+
+  const exhausted = await runScript(
+    { objective: "retry exhausts", slices: twoSlices, maxAttempts: 2 },
+    { fail: ["worker:wiring"] }
+  );
+  ok(
+    exhausted.stubs.calls.filter((call) => call.label === "worker:wiring").length === 2,
+    "retries stop at maxAttempts"
+  );
+  ok(
+    exhausted.result.unresolved.some((item) => item.includes("slice wiring produced no result after 2 of 2 attempts")),
+    "an exhausted retry names the attempt count"
+  );
+
+  const oneAttempt = await runScript({ objective: "one attempt by default", slices: twoSlices }, { fail: ["worker:wiring"] });
+  ok(
+    oneAttempt.stubs.calls.filter((call) => call.label === "worker:wiring").length === 1,
+    "the default is one attempt per unit"
+  );
+
+  const singleRetry = await runScript({ objective: "single worker retry", maxAttempts: 2 }, { failOnce: { worker: 1 } });
+  ok(singleRetry.result.ok === true, "a lone worker gets the same retry budget");
+  ok(singleRetry.result.runtime.spawnCount === 2, "a retried lone worker is counted twice");
 
   const overlap = await runScript({
     objective: "two writers, one path",
     slices: [
-      { id: "a", objective: "first", writePaths: ["src/shared.js", "src/a.js"], acceptance: ["a passes"] },
-      { id: "b", objective: "second", writePaths: ["src/shared.js"], acceptance: ["b passes"] }
+      { id: "a", objective: "first", artifact: "src/a.js", writePaths: ["src/shared.js", "src/a.js"], acceptance: ["a passes"] },
+      { id: "b", objective: "second", artifact: "src/shared.js flag", writePaths: ["src/shared.js"], acceptance: ["b passes"] }
     ]
   });
   ok(
@@ -466,9 +570,9 @@ function runScript(scriptArgs, options) {
   const bridge = await runScript({
     objective: "the third slice bridges two owners",
     slices: [
-      { id: "a", objective: "a", writePaths: ["src/one.js"], acceptance: ["a passes"] },
-      { id: "b", objective: "b", writePaths: ["src/two.js"], acceptance: ["b passes"] },
-      { id: "c", objective: "c", writePaths: ["src/one.js", "src/two.js"], acceptance: ["c passes"] }
+      { id: "a", objective: "a", artifact: "src/one.js", writePaths: ["src/one.js"], acceptance: ["a passes"] },
+      { id: "b", objective: "b", artifact: "src/two.js", writePaths: ["src/two.js"], acceptance: ["b passes"] },
+      { id: "c", objective: "c", artifact: "src/one.js plus src/two.js", writePaths: ["src/one.js", "src/two.js"], acceptance: ["c passes"] }
     ]
   });
   ok(
@@ -478,7 +582,7 @@ function runScript(scriptArgs, options) {
 
   const unchecked = await runScript({
     objective: "uncheckable",
-    slices: [{ id: "x", objective: "do the thing", writePaths: ["src/x.js"] }]
+    slices: [{ id: "x", objective: "do the thing", artifact: "out/x.txt", writePaths: ["src/x.js"] }]
   });
   ok(
     unchecked.result.ok === false && unchecked.result.stage === "validate",
@@ -492,7 +596,7 @@ function runScript(scriptArgs, options) {
 
   const unowned = await runScript({
     objective: "unowned",
-    slices: [{ id: "y", objective: "do the thing", acceptance: ["test passes"] }]
+    slices: [{ id: "y", objective: "do the thing", artifact: "out/y.txt", acceptance: ["test passes"] }]
   });
   ok(unowned.result.ok === false, "a slice with no write paths is refused");
 
@@ -505,8 +609,8 @@ function runScript(scriptArgs, options) {
   const duplicate = await runScript({
     objective: "duplicate ids",
     slices: [
-      { id: "same", objective: "one", writePaths: ["src/one.js"], acceptance: ["a passes"] },
-      { id: "same", objective: "two", writePaths: ["src/two.js"], acceptance: ["b passes"] }
+      { id: "same", objective: "one", artifact: "out/one.txt", writePaths: ["src/one.js"], acceptance: ["a passes"] },
+      { id: "same", objective: "two", artifact: "out/two.txt", writePaths: ["src/two.js"], acceptance: ["b passes"] }
     ]
   });
   ok(
@@ -531,6 +635,7 @@ function runScript(scriptArgs, options) {
   const manySlices = [1, 2, 3, 4, 5].map((n) => ({
     id: "s" + n,
     objective: "part " + n,
+    artifact: "out/s" + n + ".txt",
     writePaths: ["src/s" + n + ".js"],
     acceptance: ["check " + n]
   }));

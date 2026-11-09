@@ -5,6 +5,7 @@ Copy and fill in before spawning an agent. Delete any line that does not apply.
 ```
 Name / role:
 Objective (one sentence):
+Handoff artifact (the one output the next step consumes):
 Requirement IDs:
 Write ownership (exclusive paths) — or "READ-ONLY":
 Interface contract / frozen decisions:

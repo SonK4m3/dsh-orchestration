@@ -34,7 +34,7 @@ profiles/<name>/profile.json six profiles: model + effort per stage, host cap
 setup.ps1                    Windows installer (PowerShell 5.1+)
 setup.sh                     macOS / Linux installer (POSIX bash)
 
-tests/test_profiles.js       311 checks: profile + pipeline consistency
+tests/test_profiles.js       329 checks: profile + pipeline consistency
 tests/test_install.ps1       83 checks: PowerShell installer
 tests/test_install.sh        108 checks: POSIX installer
 
@@ -67,7 +67,7 @@ scripted use, `-Scope User` / `--scope user` to install into `$DSH_HOME`, and
 
 `orchestrate.js` is pasted into the `workflow` tool's `script` argument and driven
 by its `args`: `objective`, `profile`, `requirements`, `writePaths`, `slices`,
-`provider`, `evidence`, `dryRun`. It runs four phases and five nodes.
+`maxAttempts`, `provider`, `evidence`, `dryRun`. It runs four phases and five nodes.
 
 | Phase | Node | Tier | Result |
 | --- | --- | --- | --- |
@@ -84,12 +84,17 @@ review independent. Root then integrates and reports `unresolved[]` rather than
 claiming success.
 
 Pass `slices` instead of `writePaths` when root has already decided the partition:
-`[{ id, objective, writePaths, acceptance }]`. Each slice gets its own worker, run
-in a wave bounded by the fan-out width, and two guards run before anything spawns.
-Two slices that share a write path are merged into one writer and the merge is
-reported; a slice with no acceptance check is refused outright, because a split that
-cannot be checked is not a split. One tester and one reviewer still cover the union
-of the slices - fanning those out per slice buys cost, not evidence.
+`[{ id, objective, writePaths, acceptance, artifact, requirementIds }]`. Each slice
+gets its own worker, run in a wave bounded by the fan-out width. Three guards run
+before anything spawns: slices that share a write path merge into one writer (and the
+merge is reported); a slice with no acceptance check is refused; and a slice with no
+handoff artifact is refused, because an output nobody can consume is not a slice.
+
+`maxAttempts` (1-3, default 1) retries only the units that failed, never the whole
+plan: a rerun that repeats accepted work pays twice for one failure. The envelope
+reports `spawnCount` and the attempts per unit, so a retry is visible rather than
+inferred. One tester and one reviewer still cover the union of the slices - fanning
+those out per slice buys cost, not evidence.
 
 What comes back is a **summary envelope**: gate decisions (`verdict`, `passed`,
 `changedPaths`, counts, `unresolved`) plus each report clipped to one line, about
@@ -127,7 +132,7 @@ All three suites are green, and none of them is a smoke test:
 
 | Suite | Result | Notes |
 | --- | --- | --- |
-| `node tests/test_profiles.js` | 311/311 | Drift-checks the pipeline's embedded profile table against `profiles/`, and asserts the effort ladder, one model on every tier, the review gate never at low effort, node order, prompt assembly, the summary-versus-full evidence envelope, fan-out width versus cap, slice partitioning with its merge/refusal guard, and failure degradation. |
+| `node tests/test_profiles.js` | 329/329 | Drift-checks the pipeline's embedded profile table against `profiles/`, and asserts the effort ladder, one model on every tier, the review gate never at low effort, node order, prompt assembly, the summary-versus-full evidence envelope, fan-out width versus cap, slice partitioning with its merge/refusal guard, mandatory handoff artifacts, per-unit retry budgets, and failure degradation. |
 | `powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_install.ps1` | 83/83 | Installs into `.test-install/`, asserts exact file lists, byte-identical copies, idempotency, profile switching, component subsets, user scope, numeric selection, and twelve refusals. |
 | `bash tests/test_install.sh` | 108/108 | Same coverage for the POSIX installer, plus a pass with `python3` and `node` removed from `PATH` so its `sed`-based profile reader is exercised. Verified on Linux bash 5.3.9 (WSL Ubuntu); macOS is unexercised. |
 

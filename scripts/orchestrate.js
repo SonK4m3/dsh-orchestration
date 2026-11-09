@@ -9,9 +9,11 @@
 //   profile,        // "pro" | "plus" | "pro-2-subagents" | "plus-2-subagents" | "pro-max" | "pro-exec-max"
 //   requirements,   // string[] — requirement statements, echoed to every agent as R1..Rn
 //   writePaths,     // string — the paths the worker alone may write (single-writer mode)
-//   slices,         // array of { id, objective, writePaths: string[], acceptance: string[] }
+//   slices,         // array of { id, objective, writePaths: string[], acceptance: string[],
+//                   //            artifact: string, requirementIds?: string[] }
 //                   //   — the partition root already decided; one worker per slice, and
 //                   //     slices that share a write path are merged into one writer
+//   maxAttempts,    // integer 1..3 (default 1) — retry the failed unit alone, never the run
 //   provider,       // string — override the LLM provider for every node
 //   evidence,       // "summary" (default) | "full" — how much of each node's report returns
 //   dryRun          // boolean — resolve the plan and return it without spawning anything
@@ -98,6 +100,22 @@ const providerOverride = (args && args.provider) || null;
 const evidenceMode = (args && args.evidence) === "full" ? "full" : "summary";
 const fanOutWidth = Math.max(1, Math.min(3, profile.host.maxActiveSubagents || 1));
 
+// Retry budget, per unit. Decomposition only pays when a failure costs one unit and
+// not the run: a static split that reruns everything downstream is measurably more
+// expensive than not splitting at all. The cap is 3 because a fourth attempt on the
+// same contract is a signal to change the contract, not the count.
+const rawAttempts = args && args.maxAttempts;
+let maxAttempts = 1;
+const argProblems = [];
+if (rawAttempts !== undefined) {
+  const isInt = typeof rawAttempts === "number" && isFinite(rawAttempts) && Math.floor(rawAttempts) === rawAttempts;
+  if (!isInt || rawAttempts < 1 || rawAttempts > 3) {
+    argProblems.push("maxAttempts: expected an integer 1..3 (got " + JSON.stringify(rawAttempts) + ")");
+  } else {
+    maxAttempts = rawAttempts;
+  }
+}
+
 // Slices: the partition root already decided, instead of one writer for everything.
 // The guard is the point of this argument. Two slices that write one path collapse
 // into a single writer, and a slice whose done-state cannot be checked is refused
@@ -107,7 +125,7 @@ const sliceProblems = [];
 // A wrong type must not degrade into "one writer for everything": root would think
 // it split the work and read a single worker's report as the whole change.
 if (args && args.slices !== undefined && !Array.isArray(args.slices)) {
-  sliceProblems.push("slices: expected an array of { id, objective, writePaths, acceptance }");
+  sliceProblems.push("slices: expected an array of { id, objective, writePaths, acceptance, artifact }");
 }
 
 function normalizeSlices(raw) {
@@ -121,10 +139,20 @@ function normalizeSlices(raw) {
     const rawChecks = (slice && slice.acceptance) || [];
     const paths = (Array.isArray(rawPaths) ? rawPaths : []).map((p) => String(p).trim()).filter(Boolean);
     const checks = (Array.isArray(rawChecks) ? rawChecks : []).map((c) => String(c).trim()).filter(Boolean);
+    // The artifact is the boundary test made explicit: one output the next step
+    // consumes on its own. A slice that can only hand over "how I did it" is cut in
+    // the wrong place, and merging it into its consumer is the fix.
+    const artifact = String((slice && slice.artifact) || "").replace(/\s+/g, " ").trim();
+    const rawRequirementIds = slice && slice.requirementIds;
+    const requirementIds = (Array.isArray(rawRequirementIds) ? rawRequirementIds : [])
+      .map((r) => String(r).trim())
+      .filter(Boolean);
     if (!sliceObjective) sliceProblems.push(id + ": objective is empty");
     if (!paths.length) sliceProblems.push(id + ": writePaths is empty (a writer owns at least one path)");
     if (!checks.length) sliceProblems.push(id + ": acceptance is empty (done must be checkable before delegating)");
-    return { id, objective: sliceObjective, writePaths: paths, acceptance: checks };
+    if (!artifact) sliceProblems.push(id + ": artifact is empty (name the one output the next step consumes)");
+    if (rawRequirementIds !== undefined && !Array.isArray(rawRequirementIds)) sliceProblems.push(id + ": requirementIds must be an array of ids");
+    return { id, objective: sliceObjective, artifact, requirementIds, writePaths: paths, acceptance: checks };
   });
 }
 
@@ -135,6 +163,8 @@ function mergeOverlapping(list) {
   const absorb = (target, slice) => {
     const shared = target.writePaths.filter((p) => slice.writePaths.indexOf(p) !== -1);
     target.objective = target.objective + " / " + slice.objective;
+    target.artifact = target.artifact + " / " + slice.artifact;
+    target.requirementIds = target.requirementIds.concat(slice.requirementIds.filter((r) => target.requirementIds.indexOf(r) === -1));
     target.writePaths = target.writePaths.concat(slice.writePaths.filter((p) => target.writePaths.indexOf(p) === -1));
     target.acceptance = target.acceptance.concat(slice.acceptance);
     target.mergedFrom = target.mergedFrom.concat(slice.id);
@@ -147,6 +177,8 @@ function mergeOverlapping(list) {
       kept.push({
         id: slice.id,
         objective: slice.objective,
+        artifact: slice.artifact,
+        requirementIds: slice.requirementIds.slice(),
         writePaths: slice.writePaths.slice(),
         acceptance: slice.acceptance.slice(),
         mergedFrom: []
@@ -177,6 +209,8 @@ const planReport = slicePlan
       slices: slicePlan.slices.map((slice) => ({
         id: slice.id,
         objective: slice.objective,
+        artifact: slice.artifact,
+        requirementIds: slice.requirementIds,
         writePaths: slice.writePaths,
         acceptance: slice.acceptance,
         mergedFrom: slice.mergedFrom
@@ -185,14 +219,15 @@ const planReport = slicePlan
     }
   : null;
 
-if (sliceProblems.length) {
+const problems = sliceProblems.concat(argProblems);
+if (problems.length) {
   return {
     ok: false,
     stage: "validate",
     profile: profileName,
-    reason: "args.slices is not delegable. Nothing was spawned, so nothing is claimed.",
-    problems: sliceProblems,
-    unresolved: sliceProblems
+    reason: "args are not delegable. Nothing was spawned, so nothing is claimed.",
+    problems,
+    unresolved: problems
   };
 }
 
@@ -203,6 +238,7 @@ if (args && args.dryRun) {
     profile: profileName,
     objective,
     fanOutWidth,
+    maxAttempts,
     workerCount: slices.length || 1,
     slices: planReport ? planReport.slices : [],
     merges: planReport ? planReport.merges : [],
@@ -350,46 +386,83 @@ if (!researcher) reconGaps.push("researcher returned no result (spawn failed or 
 
 phase("Implement");
 
-const slicePacket = (slice) =>
+const attemptLine = (attempt) =>
+  attempt > 1
+    ? "RETRY " + attempt + " of " + maxAttempts + ": the previous attempt on this unit returned no result. Same contract, same ownership, no wider scope.\n"
+    : "";
+
+const slicePacket = (slice, attempt) =>
+  attemptLine(attempt) +
   "ROLE: worker (single writer, slice " + slice.id + ")\n" +
   "SLICE OBJECTIVE: " + slice.objective +
+  "\nHANDOFF ARTIFACT (the next step consumes this alone): " + slice.artifact +
+  (slice.requirementIds.length ? "\nSLICE REQUIREMENTS: " + slice.requirementIds.join(", ") : "") +
   "\nPARENT OBJECTIVE: " + objective +
   "\nREQUIREMENTS:\n" + requirementList +
   "\nWRITE OWNERSHIP (yours alone): " + slice.writePaths.join(", ") +
   "\nACCEPTANCE CHECKS (each one must be shown, not asserted):\n- " + slice.acceptance.join("\n- ") +
   "\nDEPENDENCIES FROM RECON:\nexplorer: " + JSON.stringify(explorer) + "\nresearcher: " + JSON.stringify(researcher) +
   "\n" + effortLine(profile.execution) +
-  "\nCONSTRAINTS: edit only the paths you own; every other path belongs to another worker. Do not add dependencies. If a shared interface must change, report it as a decision for root instead of changing it unilaterally. If recon was insufficient, say so in unresolved rather than inventing facts." +
+  "\nCONSTRAINTS: edit only the paths you own; every other path belongs to another worker. Do not add dependencies. If the artifact cannot be produced inside this ownership, stop and report it as a decision for root instead of widening scope. If a shared interface must change, report it instead of changing it unilaterally. If recon was insufficient, say so in unresolved rather than inventing facts." +
+  "\nRETURN: the structured object only.";
+
+const singleWorkerPacket = (attempt) =>
+  attemptLine(attempt) +
+  "ROLE: worker (single writer)\n" +
+  "OBJECTIVE: " + objective +
+  "\nREQUIREMENTS:\n" + requirementList +
+  "\nWRITE OWNERSHIP: " + writePaths +
+  "\nDEPENDENCIES FROM RECON:\nexplorer: " + JSON.stringify(explorer) + "\nresearcher: " + JSON.stringify(researcher) +
+  "\n" + effortLine(profile.execution) +
+  "\nCONSTRAINTS: edit only the paths you own. Do not add dependencies. If a shared interface must change, report it as a decision for root instead of changing it unilaterally. If recon was insufficient, say so in unresolved rather than inventing facts." +
   "\nRETURN: the structured object only.";
 
 let worker = null;
 const workerFailures = [];
+const attemptsUsed = {};
 
 if (!slices.length) {
-  worker = await agent(
-    "ROLE: worker (single writer)\n" +
-      "OBJECTIVE: " + objective +
-      "\nREQUIREMENTS:\n" + requirementList +
-      "\nWRITE OWNERSHIP: " + writePaths +
-      "\nDEPENDENCIES FROM RECON:\nexplorer: " + JSON.stringify(explorer) + "\nresearcher: " + JSON.stringify(researcher) +
-      "\n" + effortLine(profile.execution) +
-      "\nCONSTRAINTS: edit only the paths you own. Do not add dependencies. If a shared interface must change, report it as a decision for root instead of changing it unilaterally. If recon was insufficient, say so in unresolved rather than inventing facts." +
-      "\nRETURN: the structured object only.",
-    { label: "worker", phase: "Implement", schema: workerSchema, ...pin(profile.execution) }
-  );
-} else {
-  const runs = await inWaves(slices, fanOutWidth, (slice) =>
-    agent(slicePacket(slice), {
-      label: "worker:" + slice.id,
+  for (let attempt = 1; attempt <= maxAttempts && !worker; attempt++) {
+    attemptsUsed.worker = attempt;
+    worker = await agent(singleWorkerPacket(attempt), {
+      label: "worker",
       phase: "Implement",
       schema: workerSchema,
       ...pin(profile.execution)
-    })
-  );
+    });
+  }
+  if (!worker) workerFailures.push("worker produced no result after " + attemptsUsed.worker + " of " + maxAttempts + " attempts");
+} else {
+  // One retry loop for the whole plan: a slice that already returned is never
+  // spawned again, so a second pass costs one failed unit instead of the run.
+  const runs = slices.map(() => null);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const pending = slices
+      .map((slice, index) => ({ slice, index }))
+      .filter((entry) => !runs[entry.index]);
+    if (!pending.length) break;
+    const batch = await inWaves(pending, fanOutWidth, (entry) =>
+      agent(slicePacket(entry.slice, attempt), {
+        label: "worker:" + entry.slice.id,
+        phase: "Implement",
+        schema: workerSchema,
+        ...pin(profile.execution)
+      })
+    );
+    batch.forEach((run, offset) => {
+      const index = pending[offset].index;
+      attemptsUsed[slices[index].id] = attempt;
+      if (run) runs[index] = run;
+    });
+  }
+
   const completed = [];
   runs.forEach((run, index) => {
     if (run) completed.push({ slice: slices[index], run });
-    else workerFailures.push("slice " + slices[index].id + " produced no result");
+    else
+      workerFailures.push(
+        "slice " + slices[index].id + " produced no result after " + attemptsUsed[slices[index].id] + " of " + maxAttempts + " attempts"
+      );
   });
   if (completed.length) {
     const changed = [];
@@ -418,7 +491,7 @@ if (!worker) {
       : "worker produced no result; nothing was verified and nothing is claimed.",
     recon: { explorer, researcher },
     plan: planReport,
-    unresolved: reconGaps.concat(workerFailures.length ? workerFailures : ["implementation never completed"])
+    unresolved: reconGaps.concat(workerFailures).concat(["implementation never completed"])
   };
 }
 
@@ -534,5 +607,12 @@ return {
     ]
   },
   unresolved,
-  runtime: { fanOutWidth, maxActiveSubagents: profile.host.maxActiveSubagents, workerCount: slices.length || 1 }
+  runtime: {
+    fanOutWidth,
+    maxActiveSubagents: profile.host.maxActiveSubagents,
+    workerCount: slices.length || 1,
+    maxAttempts,
+    spawnCount: Object.keys(attemptsUsed).reduce((sum, key) => sum + attemptsUsed[key], 0),
+    attempts: Object.keys(attemptsUsed).map((key) => ({ id: key, attempts: attemptsUsed[key] }))
+  }
 };

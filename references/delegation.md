@@ -7,6 +7,7 @@ What to put in a work packet, and how to keep a fan-out from collapsing into rew
 | Field | Why it matters |
 | --- | --- |
 | Objective | One sentence. If it needs two, the slice is too big. |
+| Handoff artifact | The one output the next step consumes. If using it requires your reasoning, the boundary is wrong. |
 | Requirement IDs | Lets you map the result back to what the user asked for. |
 | Exclusive write paths | Prevents two agents editing one file. |
 | Read-only scope | Explicit when the agent must not change anything. |
@@ -33,6 +34,8 @@ an agent re-derive conclusions root already holds.
 ## Ownership rules
 
 - One writer per file at a time.
+- Cut slices vertically: each runs end to end far enough to be demonstrated alone.
+  "All the schema, then all the handlers" leaves nothing checkable until both land.
 - Freeze shared interfaces before parallel implementation starts.
 - Root keeps architecture, interface definition, and integration. Delegating the
   decision that shapes everything else guarantees an incoherent result.

@@ -13,6 +13,8 @@ This project uses the DSH orchestration kit. When work splits into independent p
 
 Split by outcome, not by role. If two pieces do not produce separately checkable results, they are one piece.
 
+Split vertically, not by layer: each piece must be demonstrable alone. Name the one artifact it hands over - if the next step cannot proceed on that artifact alone, the split is wrong.
+
 ## Hard rules
 
 - Read-only is a prompt contract here, not OS isolation. A "read-only" agent can still write; state the limit in its instructions and give it work that does not need to write.

@@ -17,11 +17,9 @@ Deadline / checkpoint (only if supplied):
 
 ## Escalate to root when
 
-- The scope conflicts with another workstream.
-- A new dependency or interface change appears.
-- Behavior is ambiguous and changes the design.
-- The same approach failed twice without new evidence.
-- A required tool, model, or path is unavailable.
+Use the authoritative list in
+[delegation.md](../references/delegation.md) under "Stop and report". Do not restate
+it here: two copies of one list drift, and the subagent then follows the stale one.
 
 ## Return format
 

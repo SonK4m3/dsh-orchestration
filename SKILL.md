@@ -35,6 +35,22 @@ If the answer is no, stay single-agent. Tightly coupled reasoning, one-file edit
 and urgent blocking work belong at root — delegating them adds round-trips and
 loses context.
 
+**Delegation gate.** The three questions above decide whether a *slice* is well
+formed. This list decides whether the work belongs in a subagent at all. Delegate
+when at least one is true:
+
+- the task spans several files, modules, or components;
+- two or more workstreams can proceed without waiting on each other;
+- the repository must be explored before anyone can implement;
+- implementation and verification benefit from separate contexts;
+- the change needs a review by someone who did not write it;
+- external or version-specific facts must be verified before the design is chosen;
+- the user asked for delegation, subagents, or parallel work.
+
+If none is true, stay at root: delegating a genuinely root-only task spends a
+round-trip and loses context. Once the gate is open, spawn at least one real
+subagent. Do not describe the delegation, and do not simulate its result.
+
 Use this table to pick a level, then read
 [topologies](references/topologies.md) for the matching diagram.
 
@@ -115,6 +131,21 @@ fails, or the deadline is at risk.
 - If the same approach fails twice with no new evidence, change the hypothesis, the
   contract, the model, or the ownership — not the retry count.
 - Add a specialist only for a concrete, named gap.
+
+## Completion gate
+
+Run this before the final answer, not after it. A delegated run is not finished
+until every line is true:
+
+- every agent the plan required was actually spawned — none was described or
+  simulated;
+- every spawned agent either returned a result or failed explicitly, and each
+  failure is named;
+- no required agent is still running;
+- material findings are integrated, and conflicting findings are resolved rather
+  than averaged;
+- verification was performed on the boundary this change actually affects;
+- what is complete, what is unverified, and what is blocked are stated separately.
 
 ## Hard rules
 

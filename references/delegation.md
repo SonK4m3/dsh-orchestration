@@ -63,6 +63,24 @@ Map each requirement to evidence or to an explicitly unresolved item.
 - Stop once the affected criteria and required gates pass. More checks past that
   point buy nothing.
 
+## Stop and report
+
+A subagent returns to root instead of expanding its scope when it hits:
+
+1. An architectural decision it was not authorized to make.
+2. A breaking change to a public API, schema, or data shape.
+3. A new dependency, or an interface another worker already owns.
+4. A security-sensitive design choice.
+5. A requirement ambiguous enough to change the outcome.
+6. Changes appearing outside its assigned write paths.
+7. A blocker that needs materially broader reasoning, or a tool or model that is
+   unavailable.
+
+Root decides whether to retry, narrow, reassign, or take the work back. A subagent
+never escalates its own model or its own scope. This list is the authoritative one;
+do not restate it in a template or a packet, because two copies drift and the
+subagent then follows the stale one.
+
 ## Failure handling
 
 | Situation | Action |
